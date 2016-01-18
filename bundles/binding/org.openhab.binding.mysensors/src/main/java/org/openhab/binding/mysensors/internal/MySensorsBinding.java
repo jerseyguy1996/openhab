@@ -239,7 +239,11 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 			
 			Type content = null;
 			Class<? extends Command> cClass = provider.getCommands(itemName).get(0);
-			if(cClass == HSBType.class) {
+			if(cClass == OnOffType.class) {
+				content = "1".equals(message.getPayload()) ? OnOffType.ON : OnOffType.OFF;
+			} else if(cClass == OpenClosedType.class) {
+				content = "1".equals(message.getPayload()) ? OpenClosedType.OPEN : OpenClosedType.CLOSED;
+			} else if(cClass == HSBType.class) {
 				content = new HSBType(Color.decode("#" + message.getPayload()));
 			} else if (cClass == PointType.class) {
 				content = new PointType(message.getPayload().replace(";", ","));

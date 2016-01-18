@@ -88,7 +88,7 @@ public class MySensorsGenericBindingProvider extends AbstractGenericBindingProvi
 	}
 	
 	private List<Class<? extends Command>> getPossibleCommands(String type, Item item) throws BindingConfigParseException {
-        List<Class<? extends Command>> commands = new ArrayList<>(item.getAcceptedCommandTypes());
+        List<Class<? extends Command>> commands = new ArrayList<Class<? extends Command>>(item.getAcceptedCommandTypes());
         try {
             if (type.startsWith("V_")) {
                 commands.retainAll(ValueType.valueOf(type).getCommands());
