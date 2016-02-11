@@ -19,6 +19,9 @@ import org.openhab.binding.mysensors.internal.type.InternalType;
 import org.openhab.binding.mysensors.internal.type.MessageType;
 import org.openhab.binding.mysensors.internal.type.ValueType;
 import org.openhab.core.binding.AbstractActiveBinding;
+import org.openhab.core.items.Item;
+import org.openhab.core.items.ItemNotFoundException;
+import org.openhab.core.items.ItemRegistry;
 import org.openhab.core.library.items.ColorItem;
 import org.openhab.core.library.types.DateTimeType;
 import org.openhab.core.library.types.HSBType;
@@ -28,6 +31,7 @@ import org.openhab.core.library.types.PointType;
 import org.openhab.core.types.Command;
 import org.openhab.core.types.State;
 import org.openhab.core.types.Type;
+import org.openhab.ui.items.ItemUIRegistry;
 import org.osgi.framework.BundleContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,9 +60,23 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 	 * server (optional, defaults to 60000ms)
 	 */
 	private long refreshInterval = 60000;
+
+	private ItemUIRegistry itemUIRegistry;
 	
 	
 	public MySensorsBinding() {
+	}
+	
+	public void setItemUIRegistry(ItemUIRegistry itemUIRegistry) {
+		this.itemUIRegistry = itemUIRegistry;
+	}
+	
+	public void unsetItemUIRegistry(ItemRegistry itemUIRegistry) {
+		itemUIRegistry = null;
+	}
+
+	public ItemUIRegistry getItemUIRegistry() {
+		return itemUIRegistry;
 	}
 		
 	
@@ -176,25 +194,7 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 		logger.debug("internalReceiveCommand({},{}) is called!", itemName, command);
 		MySensorsBindingProvider provider = getProvider(itemName);
 		if(provider != null && provider.isValueType(itemName) && provider.getCommands(itemName).contains(command.getClass())) {
-			
-			String value = command.toString();
-			if(command instanceof HSBType) {
-				Color color = ((HSBType)command).toColor();
-				value = String.format("%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
-			} else if(command instanceof PointType) {
-	            PointType point = (PointType) command;
-	            value = String.format("%s;%s;%s", point.getLatitude().toBigDecimal(), point.getLongitude().toBigDecimal(), point.getAltitude().toBigDecimal());
-	        } else if(command instanceof DateTimeType) {
-	            value = Long.toString(((DateTimeType) command).getCalendar().getTimeInMillis() / 1000);
-			} else if (command instanceof OnOffType) {
-				if(provider.getItemType(itemName).isAssignableFrom(ColorItem.class)) {
-					value = command == OnOffType.ON ? "ffffff" : "000000";
-				} else {
-					value = command == OnOffType.ON ? "1" : "0";
-				}
-			} else if (command instanceof OpenClosedType) {
-				value = command == OpenClosedType.OPEN ? "1" : "0";
-			}
+			String value = stateToValue(command, provider.getItemType(itemName).isAssignableFrom(ColorItem.class));
 			
 			gateway.write(new Message(provider.getNodeId(itemName), provider.getSensorId(itemName), MessageType.set, false, ValueType.valueOf(provider.getType(itemName)), value));
 		} else {
@@ -231,41 +231,83 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
             // int maxId = 0;
             // Lookup using I_VERSION on all nodes
             // gateway.write(MessageUtil.getResponse(msg, maxId));
-        }
-		
-		MySensorsBindingProvider provider = getProvider(message.getNodeId(), message.getSensorId(), message.getSubTypeAsString());
-		if(provider != null) {
-			String itemName = provider.getItemName(message.getNodeId(), message.getSensorId(), message.getSubTypeAsString());
-			
-			Type content = null;
-			Class<? extends Command> cClass = provider.getCommands(itemName).get(0);
-			if(cClass == OnOffType.class) {
-				content = "1".equals(message.getPayload()) ? OnOffType.ON : OnOffType.OFF;
-			} else if(cClass == OpenClosedType.class) {
-				content = "1".equals(message.getPayload()) ? OpenClosedType.OPEN : OpenClosedType.CLOSED;
-			} else if(cClass == HSBType.class) {
-				content = new HSBType(Color.decode("#" + message.getPayload()));
-			} else if (cClass == PointType.class) {
-				content = new PointType(message.getPayload().replace(";", ","));
-			} else {
-				try {
-					content = cClass.getConstructor(String.class).newInstance(message.getPayload());
-				} catch (Exception e) {
-					logger.warn("Unable to create new instace of " + cClass.getSimpleName());
+        } else {
+			MySensorsBindingProvider provider = getProvider(message.getNodeId(), message.getSensorId(), message.getSubTypeAsString());
+			if(provider != null) {
+				String itemName = provider.getItemName(message.getNodeId(), message.getSensorId(), message.getSubTypeAsString());
+				if(message.isRep()) {
+					logger.debug("Incomming request: " + message.toString());
+					Item item = getItem(itemName);
+					if(item != null) {
+						gateway.write(MessageUtil.getResponse(message, stateToValue(item.getState(), false)));
+					}
+				} else {
+					Type content = null;
+					Class<? extends Command> cClass = provider.getCommands(itemName).get(0);
+					if(cClass == OnOffType.class) {
+						content = "1".equals(message.getPayload()) ? OnOffType.ON : OnOffType.OFF;
+					} else if(cClass == OpenClosedType.class) {
+						content = "1".equals(message.getPayload()) ? OpenClosedType.OPEN : OpenClosedType.CLOSED;
+					} else if(cClass == HSBType.class) {
+						content = new HSBType(Color.decode("#" + message.getPayload()));
+					} else if (cClass == PointType.class) {
+						content = new PointType(message.getPayload().replace(";", ","));
+					} else {
+						try {
+							content = cClass.getConstructor(String.class).newInstance(message.getPayload());
+						} catch (Exception e) {
+							logger.warn("Unable to create new instace of " + cClass.getSimpleName());
+						}
+					}
+					
+					if(content != null) {
+						eventPublisher.postUpdate(itemName, (State)content);
+						//eventPublisher.postCommand(itemName, (Command)content);
+					}
+					
+					logger.debug(itemName + " = " + content);
+					
+					if(message.getAck()) {
+			            gateway.write(MessageUtil.getResponse(message, message.getPayload()));
+			        }
 				}
+			} else {
+				logger.info("Unknown: MySensors message: " + message.toString());
 			}
-			
-			if(content != null) {
-				eventPublisher.postUpdate(itemName, (State)content);
-				//eventPublisher.postCommand(itemName, (Command)content);
+        }
+	}
+	
+	private String stateToValue(Type command, boolean colorItem) {
+		String value = command.toString();
+		if(command instanceof HSBType) {
+			Color color = ((HSBType)command).toColor();
+			value = String.format("%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
+		} else if(command instanceof PointType) {
+            PointType point = (PointType) command;
+            value = String.format("%s;%s;%s", point.getLatitude().toBigDecimal(), point.getLongitude().toBigDecimal(), point.getAltitude().toBigDecimal());
+        } else if(command instanceof DateTimeType) {
+            value = Long.toString(((DateTimeType) command).getCalendar().getTimeInMillis() / 1000);
+		} else if (command instanceof OnOffType) {
+			if(colorItem) {
+				value = command == OnOffType.ON ? "ffffff" : "000000";
+			} else {
+				value = command == OnOffType.ON ? "1" : "0";
 			}
-			
-			logger.debug(itemName + " = " + content);
-			
-			if(message.getAck()) {
-	            gateway.write(MessageUtil.getResponse(message, message.getPayload()));
-	        }
+		} else if (command instanceof OpenClosedType) {
+			value = command == OpenClosedType.OPEN ? "1" : "0";
 		}
+		return value;
+	}
+	
+	private Item getItem(String itemname) {
+		if(itemUIRegistry != null) {
+			try {
+				return itemUIRegistry.getItem(itemname);
+			} catch (ItemNotFoundException e) {
+				logger.debug(e.getMessage());
+			}
+		}
+		return null;
 	}
 
 }

@@ -37,7 +37,7 @@ public class MySensorsGenericBindingProvider extends AbstractGenericBindingProvi
 	private static final Logger logger = LoggerFactory.getLogger(MySensorsGenericBindingProvider.class);
 	
 	/** {@link Pattern} which matches a binding configuration part */
-	private static final Pattern CONFIG_PATTERN = Pattern.compile("([0-9]{1,3});([0-9]{1,3});([VI]_[A-Z_]+)");
+	private static final Pattern CONFIG_PATTERN = Pattern.compile("([0-9]{1,3});([0-9]{1,3});([VI]_[A-Z1-9_]+)");
 
 	/**
 	 * {@inheritDoc}

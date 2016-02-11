@@ -41,7 +41,6 @@ public class MessageUtil {
             nodeExample(sb, msg, InternalType.I_BATTERY_LEVEL);
             nodeExample(sb, msg, InternalType.I_SKETCH_NAME);
             nodeExample(sb, msg, InternalType.I_SKETCH_VERSION);
-            nodeExample(sb, msg.getNodeId(), 0, InternalType.I_INCLUSION_MODE);
         } else {
             sb.append("New MySensor sensor found (");
             if(msg.getPayload().isEmpty()) {
@@ -63,10 +62,6 @@ public class MessageUtil {
 
     public static String colorToPayload(Color color) {
         return String.format("%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
-    }
-    
-    private static void nodeExample(StringBuilder sb, int nodeId, int sensorId, InternalType type) {
-        itemExample(sb, nodeId, sensorId, type.name(), type.getDescription());
     }
 
     private static void nodeExample(StringBuilder sb, Message msg, InternalType type) {

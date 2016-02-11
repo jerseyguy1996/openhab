@@ -15,15 +15,12 @@ import org.openhab.binding.mysensors.internal.type.MessageType;
 import org.openhab.binding.mysensors.internal.type.PresentationType;
 import org.openhab.binding.mysensors.internal.type.StreamType;
 import org.openhab.binding.mysensors.internal.type.ValueType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /*
 node-id;child-sensor-id;message-type;ack;sub-type;payload
  */
 public class Message {
     public enum SubType {}
-    private static Logger logger = LoggerFactory.getLogger(Message.class);
     List<String> data;
 
     public Message(String content) {
