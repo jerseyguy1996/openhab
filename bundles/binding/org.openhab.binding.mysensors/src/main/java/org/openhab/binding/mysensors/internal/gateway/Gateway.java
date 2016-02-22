@@ -14,7 +14,7 @@ import org.openhab.binding.mysensors.internal.Message;
 public abstract class Gateway {
     private EventHandler eventHandler;
 
-    public abstract void write(Message message);
+    public abstract boolean write(Message message);
 
     public abstract void close();
 

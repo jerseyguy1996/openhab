@@ -9,10 +9,12 @@
 package org.openhab.binding.mysensors.internal;
 
 import java.awt.Color;
+import java.io.IOException;
 import java.util.Map;
 import java.util.Properties;
 
 import org.openhab.binding.mysensors.MySensorsBindingProvider;
+import org.openhab.binding.mysensors.internal.gateway.Ethernet;
 import org.openhab.binding.mysensors.internal.gateway.Gateway;
 import org.openhab.binding.mysensors.internal.gateway.Serial;
 import org.openhab.binding.mysensors.internal.type.InternalType;
@@ -52,8 +54,12 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 	 * was called.
 	 */
 	private BundleContext bundleContext;
+	
+	private Properties prop = new Properties();
 
 	private Gateway gateway;
+	
+	private boolean iMetric = true;
 	
 	/** 
 	 * the refresh interval which is used to poll values from the MySensors
@@ -87,19 +93,36 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 	 * @param configuration Configuration properties for this component obtained from the ConfigAdmin service
 	 */
 	public void activate(final BundleContext bundleContext, final Map<String, Object> configuration) {
+		logger.debug("activate");
 		this.bundleContext = bundleContext;
 		
-		Properties prop = new Properties();
 		prop.putAll(configuration);
 		
-		refreshInterval = Long.parseLong(prop.getProperty("refresh", "60000"));
-		
-		logger.debug("activate");
-		
-		gateway = new Serial(prop.getProperty("port"), Integer.parseInt(prop.getProperty("baudrate", "115200")));
+		try {
+			refreshInterval = Long.parseLong(prop.getProperty("refresh", "60000"));
+			iMetric = Boolean.parseBoolean(prop.getProperty("metric", "true"));
+			
+			startGateway();
+			setProperlyConfigured(true);
+		} catch (Exception e) { 
+			setProperlyConfigured(false);
+		}
+	}
+	
+	private void startGateway() throws NumberFormatException, IOException {
+		String type = prop.getProperty("type", "serial");
+		if("serial".equalsIgnoreCase(type)) {
+			gateway = new Serial(prop.getProperty("port"), Integer.parseInt(prop.getProperty("baudrate", "115200")));
+		} else if ("ethernet".equalsIgnoreCase(type)) {
+			gateway = new Ethernet(prop.getProperty("host"), Integer.parseInt(prop.getProperty("port", "5003")));
+		}
 		gateway.setEventHandler(this);
-		
-		setProperlyConfigured(true);
+	}
+	
+	private void stopGateway() {
+		gateway.close();
+		gateway.setEventHandler(null);
+		gateway= null;
 	}
 	
 	/**
@@ -126,8 +149,7 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 	 */
 	public void deactivate(final int reason) {
 		this.bundleContext = null;
-		gateway.close();
-		gateway= null;
+		stopGateway();
 		logger.debug("deactivate(" + reason + ")");
 	}
 
@@ -153,7 +175,21 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 	 */
 	@Override
 	protected void execute() {
-		logger.debug("execute() method is called!");
+		if(gateway != null && !gateway.write(new Message(0, 0, MessageType.internal, false, InternalType.I_VERSION, ""))) {
+			logger.debug("Ping gateway: Faild, unable to contact gawatay");
+			stopGateway();
+		} else {
+			logger.trace("Ping gateway: All good");
+		}
+		if(gateway == null) {
+			try {
+				logger.debug("Starting new gateway");
+				startGateway();
+			} catch(Exception e) {
+				logger.warn("Unable to recover gateway");
+				stopGateway();
+			}
+		}
 	}
 	
 	/**
@@ -192,15 +228,16 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 	@Override
 	protected void internalReceiveCommand(String itemName, Command command) {
 		logger.debug("internalReceiveCommand({},{}) is called!", itemName, command);
-		MySensorsBindingProvider provider = getProvider(itemName);
-		if(provider != null && provider.isValueType(itemName) && provider.getCommands(itemName).contains(command.getClass())) {
-			String value = stateToValue(command, provider.getItemType(itemName));
-			
-			gateway.write(new Message(provider.getNodeId(itemName), provider.getSensorId(itemName), MessageType.set, false, ValueType.valueOf(provider.getType(itemName)), value));
-		} else {
-			logger.debug("Command \"" + command.getClass() + "\" is not a valid Command tyoe: " + provider.getCommands(itemName));
+		if(gateway != null) {
+			MySensorsBindingProvider provider = getProvider(itemName);
+			if(provider != null && provider.isValueType(itemName) && provider.getCommands(itemName).contains(command.getClass())) {
+				String value = stateToValue(command, provider.getItemType(itemName));
+				
+				gateway.write(new Message(provider.getNodeId(itemName), provider.getSensorId(itemName), MessageType.set, false, ValueType.valueOf(provider.getType(itemName)), value));
+			} else {
+				logger.debug("Command \"" + command.getClass() + "\" is not a valid Command tyoe: " + provider.getCommands(itemName));
+			}
 		}
-		
 	}
 	
 	/**
@@ -218,14 +255,16 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 		
 		if(message.isPresentation()) {
 			logger.info(MessageUtil.toPresentation(message));
+		} else if (message.isInternal(InternalType.I_VERSION)) {
+			logger.debug("Gateway Version: " + message.getPayload());
         } else if (message.isInternal(InternalType.I_GATEWAY_READY)) {
-            logger.debug("Gateway Ready");
+            logger.info("Gateway Ready");
         } else if (message.isInternal(InternalType.I_LOG_MESSAGE)) {
             logger.debug("I_LOG_MESSAGE: " + message.getPayload());
         } else if (message.isInternal(InternalType.I_TIME)) {
             gateway.write(MessageUtil.getResponse(message, System.currentTimeMillis() / 1000));
         } else if (message.isInternal(InternalType.I_CONFIG)) {
-            gateway.write(MessageUtil.getResponse(message, "M"));
+            gateway.write(MessageUtil.getResponse(message, iMetric ? "M" : "I"));
         } else if (message.isInternal(InternalType.I_ID_REQUEST)) {
             // ToDo: Auto assign ID's of nodes
             // int maxId = 0;

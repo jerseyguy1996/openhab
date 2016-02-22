@@ -76,15 +76,15 @@ public class Serial extends Gateway implements SerialPortEventListener {
     }
 
     @Override
-    public void write(Message message) {
+    public boolean write(Message message) {
     	logger.trace("Writing: " + message.toMessage());
         try {
             outputStream.write(message.toMessage().getBytes());
             outputStream.flush();
-            failing = false;
+            return true;
         } catch (IOException e) {
-            failing = true;
-            logger.debug("Error writing data on serial port {}: {}", serialPort.getName(), e.getMessage());
+        	logger.debug("Error writing data on serial port {}: {}", serialPort.getName(), e.getMessage());
+            return false;
         }
     }
 
