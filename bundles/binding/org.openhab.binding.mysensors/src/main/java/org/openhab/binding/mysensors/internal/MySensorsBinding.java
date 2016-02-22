@@ -194,7 +194,7 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 		logger.debug("internalReceiveCommand({},{}) is called!", itemName, command);
 		MySensorsBindingProvider provider = getProvider(itemName);
 		if(provider != null && provider.isValueType(itemName) && provider.getCommands(itemName).contains(command.getClass())) {
-			String value = stateToValue(command, provider.getItemType(itemName).isAssignableFrom(ColorItem.class));
+			String value = stateToValue(command, provider.getItemType(itemName));
 			
 			gateway.write(new Message(provider.getNodeId(itemName), provider.getSensorId(itemName), MessageType.set, false, ValueType.valueOf(provider.getType(itemName)), value));
 		} else {
@@ -217,7 +217,7 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 		logger.trace("Incomming message: " + message);
 		
 		if(message.isPresentation()) {
-			logger.debug(MessageUtil.toPresentation(message));
+			logger.info(MessageUtil.toPresentation(message));
         } else if (message.isInternal(InternalType.I_GATEWAY_READY)) {
             logger.debug("Gateway Ready");
         } else if (message.isInternal(InternalType.I_LOG_MESSAGE)) {
@@ -239,7 +239,7 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 					logger.debug("Incomming request: " + message.toString());
 					Item item = getItem(itemName);
 					if(item != null) {
-						gateway.write(MessageUtil.getResponse(message, stateToValue(item.getState(), false)));
+						gateway.write(MessageUtil.getResponse(message, stateToValue(item.getState(), provider.getItemType(itemName))));
 					}
 				} else {
 					Type content = null;
@@ -270,14 +270,18 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 					if(message.getAck()) {
 			            gateway.write(MessageUtil.getResponse(message, message.getPayload()));
 			        }
+					
+					if(message.getAck()) {
+						gateway.write(MessageUtil.getResponse(message, message.getPayload()));
+					}
 				}
 			} else {
-				logger.info("Unknown: MySensors message: " + message.toString());
+				logger.info(String.format("No item configured for \"%s;%s;%s\"", message.getNodeId(), message.getSensorId(), message.getSubTypeAsString()));
 			}
         }
 	}
 	
-	private String stateToValue(Type command, boolean colorItem) {
+	private String stateToValue(Type command, Class<? extends Item> itemtype) {
 		String value = command.toString();
 		if(command instanceof HSBType) {
 			Color color = ((HSBType)command).toColor();
@@ -288,7 +292,7 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
         } else if(command instanceof DateTimeType) {
             value = Long.toString(((DateTimeType) command).getCalendar().getTimeInMillis() / 1000);
 		} else if (command instanceof OnOffType) {
-			if(colorItem) {
+			if(ColorItem.class.isAssignableFrom(itemtype)) {
 				value = command == OnOffType.ON ? "ffffff" : "000000";
 			} else {
 				value = command == OnOffType.ON ? "1" : "0";
