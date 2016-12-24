@@ -315,7 +315,7 @@ public class MySensorsBinding extends AbstractActiveBinding<MySensorsBindingProv
 					}
 				}
 			} else {
-				logger.info(String.format("No item configured for \"%s;%s;%s\"", message.getNodeId(), message.getSensorId(), message.getSubTypeAsString()));
+				logger.info(String.format("No item for \"%s;%s;%s\"", message.getNodeId(), message.getSensorId(), message.getSubTypeAsString()));
 			}
         }
 	}
